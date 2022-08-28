@@ -3,6 +3,7 @@ package com.example.ambigosdemo.platform.rest;
 import com.auth0.jwt.JWT;
 import com.auth0.jwt.algorithms.Algorithm;
 import com.example.ambigosdemo.platform.entities.User;
+import com.example.ambigosdemo.platform.jwt.JwtUtils;
 import com.example.ambigosdemo.platform.models.UserInputModel;
 import com.example.ambigosdemo.platform.services.UserService;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -35,6 +36,7 @@ import java.util.stream.Collectors;
 public class PlatformController {
     private final UserService userService;
     private final AuthenticationManager authenticationManager;
+    private final JwtUtils jwtUtils;
 
     @PostMapping()
     public ResponseEntity createUser(@RequestBody UserInputModel userInputModel){
@@ -44,33 +46,21 @@ public class PlatformController {
     }
 
     @PostMapping("/login")
-    public ResponseEntity loginUser(@RequestBody UserInputModel userInputModel, HttpServletRequest request, HttpServletResponse response) throws IOException {
-
+    public void loginUser(@RequestBody UserInputModel userInputModel, HttpServletRequest request, HttpServletResponse response) throws IOException {
         String username = userInputModel.getUsername();
         String password = userInputModel.getPassword();
         UsernamePasswordAuthenticationToken usernamePasswordAuthenticationToken = new UsernamePasswordAuthenticationToken(username, password);
         Authentication authentication = authenticationManager.authenticate(usernamePasswordAuthenticationToken);
 
         org.springframework.security.core.userdetails.User user = (org.springframework.security.core.userdetails.User) authentication.getPrincipal();
-        Algorithm algorithm = Algorithm.HMAC256("secret".getBytes());
-        String accessToken = JWT.create().withSubject(user.getUsername())
-                .withExpiresAt(new Date(System.currentTimeMillis() + 10 * 60 * 1000))
-                .withIssuer(request.getRequestURI().toString())
-                .withClaim("roles", user.getAuthorities().stream().map(GrantedAuthority::getAuthority).collect(Collectors.toList()))
-                .sign(algorithm);
-
-        String refreshToken = JWT.create().withSubject(user.getUsername())
-                .withExpiresAt(new Date(System.currentTimeMillis() + 60 * 60 * 1000 * 24))
-                .withIssuer(request.getRequestURI().toString())
-                .sign(algorithm);
+        String accessToken = jwtUtils.getAuthorizationToken(user, request);
+        String refreshToken = jwtUtils.getRefreshToken(user, request);
 
         Map<String, String> tokens = new HashMap<>();
         tokens.put("access_token",accessToken);
         tokens.put("refresh_token",refreshToken);
         response.setContentType(MediaType.APPLICATION_JSON_VALUE);
         new ObjectMapper().writeValue(response.getOutputStream(), tokens);
-        return (ResponseEntity) response;
-
     }
 
     @GetMapping("/health")
